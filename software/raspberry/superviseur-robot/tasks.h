@@ -75,8 +75,9 @@ private:
     RT_TASK th_receiveFromMon;
     RT_TASK th_openComRobot;
     RT_TASK th_startRobot;
+    RT_TASK th_startRobotWD;
     RT_TASK th_move;
-    
+    RT_TASK th_getBattery;
     /**********************************************************************/
     /* Mutex                                                              */
     /**********************************************************************/
@@ -98,6 +99,7 @@ private:
     /**********************************************************************/
     int MSG_QUEUE_SIZE;
     RT_QUEUE q_messageToMon;
+    RT_QUEUE q_messageToRobotStart;
     
     /**********************************************************************/
     /* Tasks' functions                                                   */
@@ -149,6 +151,8 @@ private:
      */
     Message *ReadInQueue(RT_QUEUE *queue);
 
+    void GetBatteryTask(void * arg);
+    void StartRobotTaskWD(void* arg);
 };
 
 #endif // __TASKS_H__ 
