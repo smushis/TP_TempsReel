@@ -260,12 +260,14 @@ void Tasks::ReceiveFromMonTask(void *arg) {
         cout << "Rcv <= " << msgRcv->ToString() << endl << flush;
 
         if (msgRcv->CompareID(MESSAGE_MONITOR_LOST)) {
+            rt_sem_v(&sem_comMonLost);
             delete(msgRcv);
-            exit(-1);
         } else if (msgRcv->CompareID(MESSAGE_ROBOT_COM_OPEN)) {
             rt_sem_v(&sem_openComRobot);
         } else if (msgRcv->CompareID(MESSAGE_ROBOT_START_WITHOUT_WD)) {
             rt_sem_v(&sem_startRobot);
+        } else if (msgRcv->CompareID(MESSAGE_ROBOT_START_WITH_WD)) {
+            rt_sem_v(&sem_startRobotWD);
         } else if (msgRcv->CompareID(MESSAGE_ROBOT_GO_FORWARD) ||
                 msgRcv->CompareID(MESSAGE_ROBOT_GO_BACKWARD) ||
                 msgRcv->CompareID(MESSAGE_ROBOT_GO_LEFT) ||
@@ -275,7 +277,26 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             rt_mutex_acquire(&mutex_move, TM_INFINITE);
             move = msgRcv->GetID();
             rt_mutex_release(&mutex_move);
+        } else if (msgRcv->CompareID(MESSAGE_CAM_OPEN) ||
+                msgRcv->CompareID(MESSAGE_CAM_CLOSE) ||
+                msgRcv->CompareID(MESSAGE_CAM_ASK_ARENA) ||
+                msgRcv->CompareID(MESSAGE_CAM_ARENA_CONFIRM) ||
+                msgRcv->CompareID(MESSAGE_CAM_ARENA_INFIRM) ||
+                msgRcv->CompareID(MESSAGE_CAM_POSITION_COMPUTE_START) ||
+                msgRcv->CompareID(MESSAGE_CAM_POSITION_COMPUTE_STOP)) {
+            
+            rt_mutex_acquire(&mutex_cameraCmd, TM_INFINITE);
+            cameraCmd = msgRcv->GetID();
+            rt_mutex_release(&mutex_cameraCmd);
+            
+            if (msgRcv->CompareID(MESSAGE_CAM_ARENA_CONFIRM) ||
+            msgRcv->CompareID(MESSAGE_CAM_ARENA_INFIRM)) {
+                rt_sem_v(&sem_waitUser);
+            }
         }
+        
+            
+            
         delete(msgRcv); // mus be deleted manually, no consumer
     }
 }

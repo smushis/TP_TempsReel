@@ -66,6 +66,7 @@ private:
     ComRobot robot;
     int robotStarted;
     int move = MESSAGE_ROBOT_STOP;
+    int cameraCmd = MESSAGE_CAM_CLOSE;
     
     /**********************************************************************/
     /* Tasks                                                              */
@@ -84,6 +85,8 @@ private:
     RT_MUTEX mutex_robot;
     RT_MUTEX mutex_robotStarted;
     RT_MUTEX mutex_move;
+    RT_MUTEX mutex_cameraCmd;
+    
 
     /**********************************************************************/
     /* Semaphores                                                         */
@@ -92,6 +95,9 @@ private:
     RT_SEM sem_openComRobot;
     RT_SEM sem_serverOk;
     RT_SEM sem_startRobot;
+    RT_SEM sem_comMonLost;
+    RT_SEM sem_startRobotWD;
+    RT_SEM sem_waitUser;
 
     /**********************************************************************/
     /* Message queues                                                     */
