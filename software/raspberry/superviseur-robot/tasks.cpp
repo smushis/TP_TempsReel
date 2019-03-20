@@ -146,7 +146,8 @@ void Tasks::Init() {
     }
     cout << "Queues created successfully" << endl << flush;
 
-    camera = new Camera(md,10);
+    // Warning : changing the camera parameteres may cause a write in queue error
+    camera = new Camera(xs,10);
 }
 
 /**
@@ -172,14 +173,14 @@ void Tasks::Run() {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    /*if (err = rt_task_start(&th_startRobot, (void(*)(void*)) & Tasks::StartRobotTask, this)) {
+    if (err = rt_task_start(&th_startRobot, (void(*)(void*)) & Tasks::StartRobotTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
     if (err = rt_task_start(&th_move, (void(*)(void*)) & Tasks::MoveTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
-    }*/
+    }
     if (err = rt_task_start(&th_gestionCamera, (void(*)(void*)) & Tasks::gestionCameraTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
@@ -427,30 +428,33 @@ void Tasks::MoveTask(void *arg) {
 void Tasks::gestionCameraTask(void *arg) {
    // Arena arene;
     bool state = false;
-    //ImageMat imgMat;
-
+    Img * image;
+    MessageImg * msgSend = new MessageImg();
 
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     rt_sem_p(&sem_barrier, TM_INFINITE);
     
     while(1) {
+        // Waiting to open the camera
         rt_sem_p(&sem_openCamera, TM_INFINITE);
+        
+        // Open camera and check if it worked
         rt_mutex_acquire(&mutex_camera, TM_INFINITE);         
         state = camera->Open();
-        rt_mutex_release(&mutex_camera);        
-        if (state == true) {
-           /* Message *msgAck;
-            msgAck = new Message(MESSAGE_ANSWER_ACK);
-            WriteInQueue(&q_messageToMon, msgAck);*/   
+        rt_mutex_release(&mutex_camera);
+        
+        if (state == true) {  
             while(camera->IsOpen()){
-                Img * image;
-                MessageImg * msgSend;
-                msgSend = new MessageImg();
+
+                // Get an image of the camera
                 rt_mutex_acquire(&mutex_camera, TM_INFINITE); 
                 image = new Img(camera->Grab()); 
                 rt_mutex_release(&mutex_camera); 
+                
+                // Send this image to the monitor
                 msgSend->SetImage(image);
                 msgSend->SetID(MESSAGE_CAM_IMAGE);
+                
                 WriteInQueue(&q_messageToMon, msgSend); // msgSend will be deleted by sendToMon)
             }    
         }
