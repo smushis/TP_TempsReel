@@ -25,7 +25,7 @@
 #define PRIORITY_TSENDTOMON 22
 #define PRIORITY_TRECEIVEFROMMON 25
 #define PRIORITY_TSTARTROBOT 20
-#define PRIORITY_TCAMERA 21
+#define PRIORITY_TCAMERA 23
 
 /*
  * Some remarks:
@@ -102,6 +102,10 @@ void Tasks::Init() {
         cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
+    if (err = rt_sem_create(&sem_waitUser, NULL, 0, S_FIFO)) {
+        cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }    
     cout << "Semaphores created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -296,6 +300,9 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             rt_mutex_release(&mutex_move);
         } else if (msgRcv->CompareID(MESSAGE_CAM_OPEN)){
             rt_sem_v(&sem_openCamera);
+            rt_mutex_acquire(&mutex_cameraCmd, TM_INFINITE);
+            cameraCmd = msgRcv->GetID();
+            rt_mutex_release(&mutex_cameraCmd);
         } else if  (msgRcv->CompareID(MESSAGE_CAM_CLOSE) ||
                 msgRcv->CompareID(MESSAGE_CAM_ASK_ARENA) ||
                 msgRcv->CompareID(MESSAGE_CAM_ARENA_CONFIRM) ||
@@ -399,7 +406,7 @@ void Tasks::MoveTask(void *arg) {
     /**************************************************************************************/
     /* The task starts here                                                               */
     /**************************************************************************************/
-    rt_task_set_periodic(NULL, TM_NOW, 100000000);
+    rt_task_set_periodic(NULL, TM_NOW, 1000000000);
 
     while (1) {
         rt_task_wait_period(NULL);
@@ -426,40 +433,80 @@ void Tasks::MoveTask(void *arg) {
  * @brief Thread handling control of the camera.
  */
 void Tasks::gestionCameraTask(void *arg) {
-   // Arena arene;
+    Arena arene;
     bool state = false;
-    Img * image;
-    MessageImg * msgSend = new MessageImg();
+    ImageMat _dummy;
+
 
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     rt_sem_p(&sem_barrier, TM_INFINITE);
     
+    Img image(_dummy);
+    MessageImg * msgSend = new MessageImg();
+    Message * msgAckSend;
+    rt_task_set_periodic(NULL, TM_NOW,100000000);
+    
     while(1) {
         // Waiting to open the camera
+        cout << "Waiting openCamera" << endl<<flush;
         rt_sem_p(&sem_openCamera, TM_INFINITE);
-        
+        cout << "Got openCamera" << endl<<flush;
         // Open camera and check if it worked
         rt_mutex_acquire(&mutex_camera, TM_INFINITE);         
         state = camera->Open();
         rt_mutex_release(&mutex_camera);
-        
-        if (state == true) {  
+        cout << "Ran camera->Open()" << endl<<flush;
+        if (state == true) {
+            cout << "Camera ouverte !" << endl<<flush;
             while(camera->IsOpen()){
-
-                // Get an image of the camera
-                rt_mutex_acquire(&mutex_camera, TM_INFINITE); 
-                image = new Img(camera->Grab()); 
-                rt_mutex_release(&mutex_camera); 
-                
-                // Send this image to the monitor
-                msgSend->SetImage(image);
-                msgSend->SetID(MESSAGE_CAM_IMAGE);
-                
-                WriteInQueue(&q_messageToMon, msgSend); // msgSend will be deleted by sendToMon)
-            }    
-        }
+                if(cameraCmd == MESSAGE_CAM_CLOSE){
+                    cout << "Camera ferme !" << endl<<flush;
+                    camera->Close();
+                    msgAckSend = new Message(MESSAGE_ANSWER_ACK);
+                    WriteInQueue(&q_messageToMon, msgAckSend);
+                }
+                else{
+                    if(cameraCmd == MESSAGE_CAM_ASK_ARENA) {
+                        cout << "Arene demande" << endl << flush;
+                        rt_mutex_acquire(&mutex_camera, TM_INFINITE); 
+                        image = camera->Grab();         
+                        rt_mutex_release(&mutex_camera);
+                        arene = image.SearchArena();
+                        if(arene.IsEmpty() != true){
+                            cout << "Arene trouvey" << endl << flush;                            
+                            image.DrawArena(arene);
+                            msgSend->SetImage(&image);
+                            msgSend->SetID(MESSAGE_CAM_IMAGE);
+                            WriteInQueue(&q_messageToMon, msgSend); // msgSend will be deleted by sendToMon)
+                            rt_sem_p(&sem_waitUser, TM_INFINITE);
+                            /*if(cameraCmd == MESSAGE_CAM_ARENA_INFIRM){
+                                arene = NULL;
+                            }*/
+                        }
+                        else{
+                            cout << "Arene pas trouvey" << endl << flush;                            
+                            msgAckSend = new Message(MESSAGE_ANSWER_NACK);
+                            WriteInQueue(&q_messageToMon, msgAckSend);
+                        }               
+                    }
+                    else {
+                        rt_task_wait_period(NULL);
+                        // Get an image of the camera
+                        cout << "Taking picture" << endl<<flush;
+                        rt_mutex_acquire(&mutex_camera, TM_INFINITE); 
+                        image = camera->Grab(); 
+                        rt_mutex_release(&mutex_camera);
+                        // Send this image to the monitor
+                        msgSend->SetImage(&image);
+                        msgSend->SetID(MESSAGE_CAM_IMAGE);                    
+                        WriteInQueue(&q_messageToMon, msgSend); // msgSend will be deleted by sendToMon)
+                    }
+                }
+            }
+        }    
     }
- }
+}
+ 
 
 
 /**
@@ -469,6 +516,14 @@ void Tasks::gestionCameraTask(void *arg) {
  */
 void Tasks::WriteInQueue(RT_QUEUE *queue, Message *msg) {
     int err;
+    RT_QUEUE_INFO info;
+    rt_queue_inquire(queue,&info);
+    cout << "nb messages queue :" << info.nmessages << endl<<flush;
+    if (info.nmessages == (int) (32- 2))
+    {
+        cerr << "[WARNING] Message dropped." << endl << flush;
+        return;
+    }
     if ((err = rt_queue_write(queue, (const void *) &msg, sizeof ((const void *) &msg), Q_NORMAL)) < 0) {
         cerr << "Write in queue failed: " << strerror(-err) << endl << flush;
         throw std::runtime_error{"Error in write in queue"};
