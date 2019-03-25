@@ -433,12 +433,13 @@ void Tasks::MoveTask(void *arg) {
  * @brief Thread handling control of the camera.
  */
 void Tasks::gestionCameraTask(void *arg) {
-    Arena arene;
     bool state = false;
-	bool fArene = false;
+    bool fArene = false;
     ImageMat _dummy;
-	bool findPosition = false;
-	char pos[2];
+    bool findPosition = false;
+ 
+    Arena arene;
+    Position pos;
 
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     rt_sem_p(&sem_barrier, TM_INFINITE);
@@ -446,7 +447,7 @@ void Tasks::gestionCameraTask(void *arg) {
     Img image(_dummy);
     MessageImg * msgSend = new MessageImg();
     Message * msgAckSend;
-	MessagePosition * msgPosSend;
+    MessagePosition * msgPosSend;
 	
     rt_task_set_periodic(NULL, TM_NOW,100000000);
 	
@@ -484,14 +485,14 @@ void Tasks::gestionCameraTask(void *arg) {
                             WriteInQueue(&q_messageToMon, msgSend); // msgSend will be deleted by sendToMon)
                             rt_sem_p(&sem_waitUser, TM_INFINITE);
                             if(cameraCmd == MESSAGE_CAM_ARENA_INFIRM){
-                                arene.height = 0;
-								arene.width = 0;
-								fArene = false;
+                                arene.arena.height = 0;
+				arene.arena.width = 0;
+				fArene = false;
                             }
-							else if(cameraCmd == MESSAGE_CAM_ARENA_CONFIRM)
-							{
-								fArene = true;
-							}
+                            else if(cameraCmd == MESSAGE_CAM_ARENA_CONFIRM)
+                            {
+                                fArene = true;
+                            }
                         }
                         else{
                             cout << "Arene pas trouvey" << endl << flush;                            
@@ -504,31 +505,33 @@ void Tasks::gestionCameraTask(void *arg) {
                         // Get an image of the camera
                         cout << "Taking picture" << endl<<flush;
                         rt_mutex_acquire(&mutex_camera, TM_INFINITE);
-						if(fArene == true)
-						{
-							image.DrawArena(arene);
-						}
+                        if(fArene == true)
+                        {
+                            image.DrawArena(arene);
+                        }
                         image = camera->Grab(); 
                         rt_mutex_release(&mutex_camera);
-						if(cameraCmd == MESSAGE_CAM_POSITION_COMPUTE_START)
-						{
-							findPosition = true;
-							while(findPosition == true)
-							{
-								pos = image.SearchArena(arene);
-								if(pos != NULL)
-								{
-									image.DrawRobot(pos);
-								}
-								else pos = {-1;-1};
-								msgPosSend = new MessagePosition(MESSAGE_CAM_POSITION,&pos);
-								WriteInQueue(&q_messageToMon, msgPosSend);
-								if(cameraCmd == MESSAGE_CAM_POSITION_COMPUTE_STOP)
-								{
-									findPosition = false;
-								}
-							}
-						}
+                        if(cameraCmd == MESSAGE_CAM_POSITION_COMPUTE_START)
+                        {
+                            findPosition = true;
+                            while(findPosition == true)
+                            {
+                                pos = image.SearchRobot(arene).front();
+                                if(pos.robotId != -1)
+                                {
+                                    image.DrawRobot(pos);
+                                }
+                                else pos.center=cv::Point2f(-1.0,-1.0);
+                                //msgPosSend = new MessagePosition(MESSAGE_CAM_POSITION,pos);
+                                msgPosSend->SetID(MESSAGE_CAM_POSITION);
+                                msgPosSend->SetPosition(pos);
+                                WriteInQueue(&q_messageToMon, msgPosSend);
+                                if(cameraCmd == MESSAGE_CAM_POSITION_COMPUTE_STOP)
+                                {
+                                    findPosition = false;
+                                }
+                            }
+                        }
                         // Send this image to the monitor
                         msgSend->SetImage(&image);
                         msgSend->SetID(MESSAGE_CAM_IMAGE);                    
