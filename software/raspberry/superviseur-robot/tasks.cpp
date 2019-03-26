@@ -437,6 +437,7 @@ void Tasks::gestionCameraTask(void *arg) {
     bool fArene = false;
     ImageMat _dummy;
     bool findPosition = false;
+    int cp_cameraCmd;
  
     Arena arene;
     Position pos;
@@ -464,14 +465,19 @@ void Tasks::gestionCameraTask(void *arg) {
         if (state == true) {
             cout << "Camera ouverte !" << endl<<flush;
             while(camera->IsOpen()){
-                if(cameraCmd == MESSAGE_CAM_CLOSE){
+                
+                rt_mutex_acquire(&mutex_cameraCmd, TM_INFINITE);
+                cp_cameraCmd = cameraCmd;
+                rt_mutex_release(&mutex_cameraCmd);
+                
+                if(cp_cameraCmd == MESSAGE_CAM_CLOSE){
                     cout << "Camera ferme !" << endl<<flush;
                     camera->Close();
                     msgAckSend = new Message(MESSAGE_ANSWER_ACK);
                     WriteInQueue(&q_messageToMon, msgAckSend);
                 }
                 else{
-                    if(cameraCmd == MESSAGE_CAM_ASK_ARENA) {
+                    if(cp_cameraCmd == MESSAGE_CAM_ASK_ARENA) {
                         cout << "Arene demande" << endl << flush;
                         rt_mutex_acquire(&mutex_camera, TM_INFINITE); 
                         image = camera->Grab();         
@@ -480,16 +486,23 @@ void Tasks::gestionCameraTask(void *arg) {
                         if(arene.IsEmpty() != true){
                             cout << "Arene trouvey" << endl << flush;                            
                             image.DrawArena(arene);
+                            
                             msgSend->SetImage(&image);
                             msgSend->SetID(MESSAGE_CAM_IMAGE);
                             WriteInQueue(&q_messageToMon, msgSend); // msgSend will be deleted by sendToMon)
+                            
                             rt_sem_p(&sem_waitUser, TM_INFINITE);
-                            if(cameraCmd == MESSAGE_CAM_ARENA_INFIRM){
+                            
+                            rt_mutex_acquire(&mutex_cameraCmd, TM_INFINITE);
+                            cp_cameraCmd = cameraCmd;
+                            rt_mutex_release(&mutex_cameraCmd);     
+                            
+                            if(cp_cameraCmd == MESSAGE_CAM_ARENA_INFIRM){
                                 arene.arena.height = 0;
 				arene.arena.width = 0;
 				fArene = false;
                             }
-                            else if(cameraCmd == MESSAGE_CAM_ARENA_CONFIRM)
+                            else if(cp_cameraCmd == MESSAGE_CAM_ARENA_CONFIRM)
                             {
                                 fArene = true;
                             }
@@ -505,32 +518,35 @@ void Tasks::gestionCameraTask(void *arg) {
                         // Get an image of the camera
                         cout << "Taking picture" << endl<<flush;
                         rt_mutex_acquire(&mutex_camera, TM_INFINITE);
+                        image = camera->Grab(); 
+                        rt_mutex_release(&mutex_camera);
                         if(fArene == true)
                         {
                             image.DrawArena(arene);
+                        }                        
+                        switch(cp_cameraCmd){
+                            case MESSAGE_CAM_POSITION_COMPUTE_START : 
+                                findPosition = true;
+                                break;
+                            case MESSAGE_CAM_POSITION_COMPUTE_STOP :
+                                findPosition = false;
+                                break;
+                            default : 
+                                findPosition = false;
+                                break;
                         }
-                        image = camera->Grab(); 
-                        rt_mutex_release(&mutex_camera);
-                        if(cameraCmd == MESSAGE_CAM_POSITION_COMPUTE_START)
+                                
+                        if(findPosition == true)
                         {
-                            findPosition = true;
-                            while(findPosition == true)
+                            pos = image.SearchRobot(arene).front();
+                            if(pos.robotId != -1)
                             {
-                                pos = image.SearchRobot(arene).front();
-                                if(pos.robotId != -1)
-                                {
-                                    image.DrawRobot(pos);
-                                }
-                                else pos.center=cv::Point2f(-1.0,-1.0);
-                                //msgPosSend = new MessagePosition(MESSAGE_CAM_POSITION,pos);
-                                msgPosSend->SetID(MESSAGE_CAM_POSITION);
-                                msgPosSend->SetPosition(pos);
-                                WriteInQueue(&q_messageToMon, msgPosSend);
-                                if(cameraCmd == MESSAGE_CAM_POSITION_COMPUTE_STOP)
-                                {
-                                    findPosition = false;
-                                }
+                                image.DrawRobot(pos);
                             }
+                            else pos.center=cv::Point2f(-1.0,-1.0);
+
+                            msgPosSend = new MessagePosition(MESSAGE_CAM_POSITION,pos);
+                            WriteInQueue(&q_messageToMon, msgPosSend);
                         }
                         // Send this image to the monitor
                         msgSend->SetImage(&image);
