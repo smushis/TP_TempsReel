@@ -78,6 +78,7 @@ private:
     RT_TASK th_startRobotWD;
     RT_TASK th_move;
     RT_TASK th_getBattery;
+    RT_TASK th_gestionComRobot;
     /**********************************************************************/
     /* Mutex                                                              */
     /**********************************************************************/
@@ -93,7 +94,7 @@ private:
     RT_SEM sem_openComRobot;
     RT_SEM sem_serverOk;
     RT_SEM sem_startRobot;
-
+    RT_SEM sem_startRobotWD;
     /**********************************************************************/
     /* Message queues                                                     */
     /**********************************************************************/
@@ -153,6 +154,7 @@ private:
 
     void GetBatteryTask(void * arg);
     void StartRobotTaskWD(void* arg);
+    void GestionComRobot(void* arg);
 };
 
 #endif // __TASKS_H__ 
