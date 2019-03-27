@@ -79,6 +79,7 @@ private:
     RT_TASK th_startRobot;
     RT_TASK th_move;
     RT_TASK th_gestionCamera;
+    RT_TASK th_getBattery;    
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -143,7 +144,11 @@ private:
     /**
      * @brief Thread handling control of the camera.
      */
-    void gestionCameraTask(void *arg);    
+    void gestionCameraTask(void *arg);
+   /**
+     * @brief Thread handling control of the battery.
+     */
+    void GetBatteryTask(void* arg);
     
     /**********************************************************************/
     /* Queue services                                                     */
