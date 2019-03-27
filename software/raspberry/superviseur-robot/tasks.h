@@ -77,6 +77,7 @@ private:
     RT_TASK th_receiveFromMon;
     RT_TASK th_openComRobot;
     RT_TASK th_startRobot;
+    RT_TASK th_startRobotWD;
     RT_TASK th_move;
     RT_TASK th_gestionCamera;
     RT_TASK th_getBattery;    
@@ -145,10 +146,14 @@ private:
      * @brief Thread handling control of the camera.
      */
     void gestionCameraTask(void *arg);
-   /**
+    /**
      * @brief Thread handling control of the battery.
      */
     void GetBatteryTask(void* arg);
+    /**
+     * @brief Thread handling control of the WD.
+     */    
+    void StartRobotTaskWD(void* arg);
     
     /**********************************************************************/
     /* Queue services                                                     */
