@@ -27,6 +27,7 @@
 #define PRIORITY_TSTARTROBOT 20
 #define PRIORITY_TCAMERA 23
 #define PRIORITY_TBATTERY 20
+#define PRIORITY_TERRORCOM 20
 
 /*
  * Some remarks:
@@ -152,6 +153,10 @@ void Tasks::Init() {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }    
+    if (err = rt_task_create(&th_errorCom, "th_errorCom", 0, PRIORITY_TERRORCOM, 0)) {
+        cerr << "Error task create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }    	
     cout << "Tasks created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -209,7 +214,11 @@ void Tasks::Run() {
     if (err = rt_task_start(&th_startRobotWD, (void(*)(void*)) & Tasks::StartRobotTaskWD, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
-    }    
+    }
+    if (err = rt_task_start(&th_errorCom, (void(*)(void*)) & Tasks::errorCom, this)) {
+        cerr << "Error task start: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }    	
     cout << "Tasks launched" << endl << flush;
 }
 
@@ -704,6 +713,18 @@ void Tasks::StartRobotTaskWD(void *arg) {
         rt_task_wait_period(NULL);
     }
 }
+/**
+ * @brief Thread handling control of the communication errors.
+ */    
+void errorCom(void* arg){
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    
+    // Synchronization barrier (waiting that all tasks are starting)
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+    rt_sem_p(&sem_comMonLost, TM_INFINITE);
+    cout << "Perte de communication entre le superviseur et le moniteur " << endl << flush;    
+}
+
 
 /**
  * @brief Thread handling communication problems with the monitor.
