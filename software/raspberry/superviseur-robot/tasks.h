@@ -81,6 +81,7 @@ private:
     RT_TASK th_move;
     RT_TASK th_gestionCamera;
     RT_TASK th_getBattery;    
+    RT_TASK th_errorCom;
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -159,6 +160,10 @@ private:
      * @brief Thread handling communication problems with the monitor.
      */    
     void gestionComMonTask(void* arg);
+    /**
+     * @brief Thread handling control of the communication errors.
+     */    
+    void errorCom(void* arg);    
     
     /**********************************************************************/
     /* Queue services                                                     */
