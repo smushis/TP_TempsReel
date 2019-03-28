@@ -335,14 +335,12 @@ void Tasks::ReceiveFromMonTask(void *arg) {
             cameraCmd = msgRcv->GetID();
             rt_mutex_release(&mutex_cameraCmd);
             
+            // Detect if the user made a choice for the arena
             if (msgRcv->CompareID(MESSAGE_CAM_ARENA_CONFIRM) ||
             msgRcv->CompareID(MESSAGE_CAM_ARENA_INFIRM)) {
                 rt_sem_v(&sem_waitUser);
             }
         }
-        
-            
-            
         delete(msgRcv); // mus be deleted manually, no consumer
     }
 }
@@ -454,22 +452,25 @@ void Tasks::MoveTask(void *arg) {
  * @brief Thread handling control of the camera.
  */
 void Tasks::gestionCameraTask(void *arg) {
-    bool state = false;
-    bool fArene = false;
-    ImageMat _dummy;
-    bool findPosition = false;
-    int cp_cameraCmd;
+    
+    bool state = false; // used to record the result of the camera openning
+    bool fArene = false; // used to record the user's arena choice 
+    ImageMat _dummy; // used to construct an image
+    bool findPosition = false; // used to record if the position finding is asked by the user
+    int cp_cameraCmd; // used to copy the content of the global variable cameraCmd
  
     Arena arene;
     Position pos;
-
-    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
-    rt_sem_p(&sem_barrier, TM_INFINITE);
     
     Img image(_dummy);
+    
+    // Messages to send in the thread
     MessageImg * msgSend = new MessageImg();
     Message * msgAckSend;
     MessagePosition * msgPosSend;
+
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    rt_sem_p(&sem_barrier, TM_INFINITE);
 	
     rt_task_set_periodic(NULL, TM_NOW,100000000);
 	
@@ -478,15 +479,18 @@ void Tasks::gestionCameraTask(void *arg) {
         cout << "Waiting openCamera" << endl<<flush;
         rt_sem_p(&sem_openCamera, TM_INFINITE);
         cout << "Got openCamera" << endl<<flush;
+        
         // Open camera and check if it worked
         rt_mutex_acquire(&mutex_camera, TM_INFINITE);         
         state = camera->Open();
         rt_mutex_release(&mutex_camera);
         cout << "Ran camera->Open()" << endl<<flush;
+        
         if (state == true) {
             cout << "Camera ouverte !" << endl<<flush;
             while(camera->IsOpen()){
                 
+                // Get the camera's mission
                 rt_mutex_acquire(&mutex_cameraCmd, TM_INFINITE);
                 cp_cameraCmd = cameraCmd;
                 rt_mutex_release(&mutex_cameraCmd);
@@ -496,24 +500,33 @@ void Tasks::gestionCameraTask(void *arg) {
                     camera->Close();
                     msgAckSend = new Message(MESSAGE_ANSWER_ACK);
                     WriteInQueue(&q_messageToMon, msgAckSend);
-                }
-                else{
+                } else {
                     if(cp_cameraCmd == MESSAGE_CAM_ASK_ARENA) {
+                        // Camera mode : arena calibration
                         cout << "Arene demande" << endl << flush;
+                        
+                        // Get the image from the camera
                         rt_mutex_acquire(&mutex_camera, TM_INFINITE); 
                         image = camera->Grab();         
                         rt_mutex_release(&mutex_camera);
+                        
+                        // Search the arena on that image
                         arene = image.SearchArena();
+                        
                         if(arene.IsEmpty() != true){
-                            cout << "Arene trouvey" << endl << flush;                            
+                            cout << "Arene trouvee" << endl << flush;                            
+                            
+                            // Draw arena and send it to the monitor
                             image.DrawArena(arene);
                             
                             msgSend->SetImage(&image);
                             msgSend->SetID(MESSAGE_CAM_IMAGE);
                             WriteInQueue(&q_messageToMon, msgSend); // msgSend will be deleted by sendToMon)
                             
+                            // wait for user's decision 
                             rt_sem_p(&sem_waitUser, TM_INFINITE);
                             
+                            // get user's decision
                             rt_mutex_acquire(&mutex_cameraCmd, TM_INFINITE);
                             cp_cameraCmd = cameraCmd;
                             rt_mutex_release(&mutex_cameraCmd);     
@@ -527,24 +540,28 @@ void Tasks::gestionCameraTask(void *arg) {
                             {
                                 fArene = true;
                             }
-                        }
-                        else{
-                            cout << "Arene pas trouvey" << endl << flush;                            
+                        } else {
+                            // Send a NACK to notify the monitor that the arena was not found
+                            cout << "Arene pas trouvee" << endl << flush;                            
                             msgAckSend = new Message(MESSAGE_ANSWER_NACK);
                             WriteInQueue(&q_messageToMon, msgAckSend);
                         }               
-                    }
-                    else {
+                    } else {
+                        // Camera mode : Normal image sending and/or position computing
                         rt_task_wait_period(NULL);
+                        
                         // Get an image of the camera
                         cout << "Taking picture" << endl<<flush;
                         rt_mutex_acquire(&mutex_camera, TM_INFINITE);
                         image = camera->Grab(); 
                         rt_mutex_release(&mutex_camera);
+                        
+                        // Draw the arena validated by user on the image
                         if(fArene == true)
                         {
                             image.DrawArena(arene);
-                        }                        
+                        }
+                        // Check if position computing is activated
                         switch(cp_cameraCmd){
                             case MESSAGE_CAM_POSITION_COMPUTE_START : 
                                 findPosition = true;
@@ -559,6 +576,7 @@ void Tasks::gestionCameraTask(void *arg) {
                                 
                         if(findPosition == true)
                         {
+                            // compute position and send to monitor
                             pos = image.SearchRobot(arene).front();
                             if(pos.robotId != 0)
                             {
@@ -580,6 +598,9 @@ void Tasks::gestionCameraTask(void *arg) {
     }
 }
  
+/**
+ * @brief Thread checking the battery state of the robot.
+ */
 void Tasks::GetBatteryTask(void* arg) {
    
     int rs;
@@ -608,6 +629,10 @@ void Tasks::GetBatteryTask(void* arg) {
         }
     }
 }
+
+/**
+ * @brief Thread starting the communication with the robot in watchdog mode.
+ */
 void Tasks::StartRobotTaskWD(void *arg) {
     
     Message * msgSend;
@@ -679,6 +704,21 @@ void Tasks::StartRobotTaskWD(void *arg) {
         rt_task_wait_period(NULL);
     }
 }
+
+/**
+ * @brief Thread handling communication problems with the monitor.
+ */    
+void gestionComMonTask(void* arg) {
+    
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    // Synchronization barrier (waiting that all tasks are starting)
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+    
+    /**************************************************************************************/
+    /* The task starts here                                                               */
+    /**************************************************************************************/
+}
+
 
 /**
  * Write a message in a given queue

@@ -151,9 +151,14 @@ private:
      */
     void GetBatteryTask(void* arg);
     /**
-     * @brief Thread handling control of the WD.
+     * @brief Thread handling control control of the robot in watchdog mode.
      */    
     void StartRobotTaskWD(void* arg);
+    
+    /**
+     * @brief Thread handling communication problems with the monitor.
+     */    
+    void gestionComMonTask(void* arg);
     
     /**********************************************************************/
     /* Queue services                                                     */
