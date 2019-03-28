@@ -27,7 +27,7 @@
 #define PRIORITY_TSTARTROBOT 20
 #define PRIORITY_TCAMERA 23
 #define PRIORITY_TBATTERY 20
-#define PRIORITY_TERRORCOM 20
+#define PRIORITY_TERRORCOM 30
 
 /*
  * Some remarks:
@@ -111,7 +111,11 @@ void Tasks::Init() {
     if (err = rt_sem_create(&sem_startRobotWD, NULL, 0, S_FIFO)) {
         cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
-    }    
+    }
+    if (err = rt_sem_create(&sem_comMonLost, NULL, 0, S_FIFO)) {
+        cerr << "Error semaphore create: " << strerror(-err) << endl << flush;
+        exit(EXIT_FAILURE);
+    }      
     cout << "Semaphores created successfully" << endl << flush;
 
     /**************************************************************************************/
@@ -152,8 +156,8 @@ void Tasks::Init() {
     if (err = rt_task_create(&th_startRobotWD, "th_startRobotWD", 0, PRIORITY_TSTARTROBOT, 0)) {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
-    }    
-    if (err = rt_task_create(&th_errorCom, "th_errorCom", 0, PRIORITY_TERRORCOM, 0)) {
+    }   
+    if (err = rt_task_create(&th_gestionComMon, "th_gestionComMon", 0, PRIORITY_TERRORCOM, 0)) {
         cerr << "Error task create: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }    	
@@ -215,7 +219,7 @@ void Tasks::Run() {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_task_start(&th_errorCom, (void(*)(void*)) & Tasks::errorCom, this)) {
+    if (err = rt_task_start(&th_gestionComMon, (void(*)(void*)) & Tasks::gestionComMonTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }    	
@@ -399,7 +403,7 @@ void Tasks::StartRobotTask(void *arg) {
     /* The task startRobot starts here                                                    */
     /**************************************************************************************/
     while (1) {
-
+        
         Message * msgSend;
         rt_sem_p(&sem_startRobot, TM_INFINITE);
         cout << "Start robot without watchdog (";
@@ -462,6 +466,9 @@ void Tasks::MoveTask(void *arg) {
  */
 void Tasks::gestionCameraTask(void *arg) {
     
+    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
+    rt_sem_p(&sem_barrier, TM_INFINITE);
+    
     bool state = false; // used to record the result of the camera openning
     bool fArene = false; // used to record the user's arena choice 
     ImageMat _dummy; // used to construct an image
@@ -477,12 +484,9 @@ void Tasks::gestionCameraTask(void *arg) {
     MessageImg * msgSend = new MessageImg();
     Message * msgAckSend;
     MessagePosition * msgPosSend;
-
-    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
-    rt_sem_p(&sem_barrier, TM_INFINITE);
 	
     rt_task_set_periodic(NULL, TM_NOW,100000000);
-	
+    
     while(1) {
         // Waiting to open the camera
         cout << "Waiting openCamera" << endl<<flush;
@@ -713,23 +717,11 @@ void Tasks::StartRobotTaskWD(void *arg) {
         rt_task_wait_period(NULL);
     }
 }
-/**
- * @brief Thread handling control of the communication errors.
- */    
-void errorCom(void* arg){
-    cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
-    
-    // Synchronization barrier (waiting that all tasks are starting)
-    rt_sem_p(&sem_barrier, TM_INFINITE);
-    rt_sem_p(&sem_comMonLost, TM_INFINITE);
-    cout << "Perte de communication entre le superviseur et le moniteur " << endl << flush;    
-}
-
 
 /**
  * @brief Thread handling communication problems with the monitor.
  */    
-void gestionComMonTask(void* arg) {
+void Tasks::gestionComMonTask(void* arg) {
     
     cout << "Start " << __PRETTY_FUNCTION__ << endl << flush;
     // Synchronization barrier (waiting that all tasks are starting)
@@ -738,6 +730,12 @@ void gestionComMonTask(void* arg) {
     /**************************************************************************************/
     /* The task starts here                                                               */
     /**************************************************************************************/
+    rt_sem_p(&sem_comMonLost, TM_INFINITE);
+    cout << "Perte de communication entre le superviseur et le moniteur " << endl << flush;
+    
+    rt_mutex_acquire(&mutex_camera, TM_INFINITE);
+    camera->Close();
+    rt_mutex_release(&mutex_camera);
 }
 
 
