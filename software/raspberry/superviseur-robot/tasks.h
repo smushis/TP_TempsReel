@@ -82,6 +82,8 @@ private:
     RT_TASK th_gestionCamera;
     RT_TASK th_getBattery;    
     RT_TASK th_gestionComMon;
+    RT_TASK th_gestionComRobot;
+    RT_TASK th_dummy;
     
     /**********************************************************************/
     /* Mutex                                                              */
@@ -154,12 +156,17 @@ private:
     /**
      * @brief Thread handling control control of the robot in watchdog mode.
      */    
-    void StartRobotTaskWD(void* arg);
+    void StartRobotWDTask(void* arg);
     
     /**
      * @brief Thread handling communication problems with the monitor.
      */    
-    void gestionComMonTask(void* arg);   
+    void gestionComMonTask(void* arg); 
+    
+    /**
+     * @brief Thread handling communication problems with the robot.
+     */ 
+    void gestionComRobotTask(void* arg);
     
     /**********************************************************************/
     /* Queue services                                                     */
