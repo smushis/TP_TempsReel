@@ -19,14 +19,14 @@
 #include <stdexcept>
 
 // Déclaration des priorités des taches
-#define PRIORITY_TSERVER 30
-#define PRIORITY_TOPENCOMROBOT 20
-#define PRIORITY_TMOVE 20
-#define PRIORITY_TSENDTOMON 22
+#define PRIORITY_TSERVER 10
+#define PRIORITY_TOPENCOMROBOT 10
+#define PRIORITY_TMOVE 28
+#define PRIORITY_TSENDTOMON 25
 #define PRIORITY_TRECEIVEFROMMON 25
-#define PRIORITY_TSTARTROBOT 20
-#define PRIORITY_TCAMERA 23
-#define PRIORITY_TBATTERY 20
+#define PRIORITY_TSTARTROBOT 15
+#define PRIORITY_TCAMERA 22
+#define PRIORITY_TBATTERY 10
 #define PRIORITY_TERRORCOMMON 30
 #define PRIORITY_TERRORCOMROBOT 30
 
@@ -228,10 +228,10 @@ void Tasks::Run() {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
     }
-    if (err = rt_task_start(&th_gestionComRobot, (void(*)(void*)) & Tasks::gestionComRobotTask, this)) {
+    /* if (err = rt_task_start(&th_gestionComRobot, (void(*)(void*)) & Tasks::gestionComRobotTask, this)) {
         cerr << "Error task start: " << strerror(-err) << endl << flush;
         exit(EXIT_FAILURE);
-    }
+    }*/
     cout << "Tasks launched" << endl << flush;
 }
 
@@ -498,15 +498,12 @@ void Tasks::gestionCameraTask(void *arg) {
     
     while(1) {
         // Waiting to open the camera
-        cout << "Waiting openCamera" << endl<<flush;
         rt_sem_p(&sem_openCamera, TM_INFINITE);
-        cout << "Got openCamera" << endl<<flush;
         
         // Open camera and check if it worked
         rt_mutex_acquire(&mutex_camera, TM_INFINITE);         
         state = camera->Open();
         rt_mutex_release(&mutex_camera);
-        cout << "Ran camera->Open()" << endl<<flush;
         
         if (state == true) {
             cout << "Camera ouverte !" << endl<<flush;
@@ -679,11 +676,9 @@ void Tasks::StartRobotWDTask(void *arg) {
         rt_mutex_release(&mutex_robot);
         cout << msgSend->GetID();
         cout << ")" << endl;
-
-
         
         if (msgSend->GetID() == MESSAGE_ANSWER_ACK) {
-                    cout << "MESSAGE ACK -> "<< endl << flush;
+            cout << "MESSAGE ACK -> "<< endl << flush;
 
             rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
             robotStarted = 1;
@@ -692,7 +687,6 @@ void Tasks::StartRobotWDTask(void *arg) {
         
         WriteInQueue(&q_messageToMon, msgSend);  // msgSend will be deleted by sendToMon
 
-        
         rt_mutex_acquire(&mutex_robotStarted, TM_INFINITE);
         rs=robotStarted;
         rt_mutex_release(&mutex_robotStarted);
@@ -770,7 +764,7 @@ void Tasks::gestionComRobotTask(void* arg) {
     /**************************************************************************************/
     /* The task starts here                                                               */
     /**************************************************************************************/
-    rt_task_set_periodic(NULL, TM_NOW, 500000000);
+    rt_task_set_periodic(NULL, TM_NOW, 10000000000);
     
     // Used to record the robot's pong
     Message* robot_status;
@@ -828,8 +822,7 @@ void Tasks::gestionComRobotTask(void* arg) {
             }
             else{
                 failure_count=0;
-            }
-                   
+            }        
         }
     }
 }
