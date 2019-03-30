@@ -714,7 +714,6 @@ void Tasks::StartRobotWDTask(void *arg) {
             rs=robotStarted;
             rt_mutex_release(&mutex_robotStarted);
         }
-        rt_task_wait_period(NULL);
     }
 }
 
